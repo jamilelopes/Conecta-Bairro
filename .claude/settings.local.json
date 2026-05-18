@@ -6,7 +6,16 @@
       "Bash(Format-Table -AutoSize)",
       "PowerShell(head *)",
       "Bash(Get-ChildItem *)",
-      "Bash(bunx tsc *)"
+      "Bash(bunx tsc *)",
+      "WebSearch",
+      "Bash(npm view *)",
+      "Bash(npm remove *)",
+      "Bash(npm install *)",
+      "Bash(sudo chown -R lab:lab /home/lab/projects/Conecta-Bairro/frontend/node_modules)",
+      "Bash(npx astro *)",
+      "Bash(node *)",
+      "Bash(git -C /home/lab/projects/Conecta-Bairro rev-parse --show-toplevel)",
+      "mcp__context7__resolve-library-id"
     ]
   }
 }

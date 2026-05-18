@@ -8,6 +8,9 @@ import os
 import uuid
 import unicodedata
 import re
+import time
+import requests as http_requests
+from jose import jwt as jose_jwt
 
 api = Blueprint('api', __name__, url_prefix='/')
 
@@ -56,14 +59,22 @@ def token_required(f):
             return jsonify({'code': 'MISSING_TOKEN', 'message': 'Authentication token is missing'}), 401
 
         try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-            current_user = User.query.get(data['user_id'])
-            if not current_user:
-                return jsonify({'code': 'USER_NOT_FOUND', 'message': 'User not found'}), 401
-        except jwt.ExpiredSignatureError:
-            return jsonify({'code': 'TOKEN_EXPIRED', 'message': 'Token has expired'}), 401
-        except jwt.InvalidTokenError:
+            jwks = get_clerk_jwks()
+            payload = jose_jwt.decode(token, jwks, algorithms=['RS256'], options={'verify_aud': False})
+        except Exception:
             return jsonify({'code': 'INVALID_TOKEN', 'message': 'Invalid token'}), 401
+
+        email = payload.get('email', '')
+        if not email:
+            return jsonify({'code': 'MISSING_EMAIL', 'message': 'Token missing email claim'}), 401
+
+        current_user = User.query.filter_by(email=email).first()
+        if not current_user:
+            name = payload.get('name') or email.split('@')[0]
+            avatar = payload.get('image_url', '')
+            current_user = User(id=generate_uuid(), email=email, name=name, role='client', avatar_url=avatar)
+            db.session.add(current_user)
+            db.session.commit()
 
         return f(current_user, *args, **kwargs)
     return decorated
@@ -159,6 +170,93 @@ def paginate_query(query, page, limit):
             'totalPages': (total + limit - 1) // limit if limit > 0 else 0
         }
     }
+
+
+_jwks_cache: dict = {'keys': None, 'expires': 0.0}
+
+
+def get_clerk_jwks() -> dict:
+    if _jwks_cache['expires'] > time.time():
+        return _jwks_cache['keys']
+    jwks_url = os.getenv('CLERK_JWKS_URL', '')
+    if not jwks_url:
+        raise ValueError('CLERK_JWKS_URL not configured')
+    resp = http_requests.get(jwks_url, timeout=5)
+    resp.raise_for_status()
+    keys = resp.json()
+    _jwks_cache['keys'] = keys
+    _jwks_cache['expires'] = time.time() + 3600
+    return keys
+
+
+@api.route('/auth/clerk', methods=['POST'])
+def clerk_auth():
+    data = request.get_json()
+    if not data or 'clerkToken' not in data:
+        return jsonify({'code': 'INVALID_REQUEST', 'message': 'clerkToken is required'}), 400
+
+    clerk_token = data.get('clerkToken')
+    user_type = data.get('userType', 'client')
+
+    try:
+        jwks = get_clerk_jwks()
+        payload = jose_jwt.decode(
+            clerk_token,
+            jwks,
+            algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
+    except Exception as e:
+        return jsonify({'code': 'INVALID_TOKEN', 'message': 'Invalid Clerk token'}), 401
+
+    email = payload.get('email', '')
+    name = payload.get('name') or (email.split('@')[0] if email else 'Usuário')
+    avatar_url = payload.get('image_url', '')
+
+    if not email:
+        return jsonify({'code': 'MISSING_EMAIL', 'message': 'Token missing email claim'}), 401
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        user = User(
+            id=generate_uuid(),
+            email=email,
+            name=name,
+            role=user_type,
+            avatar_url=avatar_url,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        if user_type == 'professional':
+            slug_base = generate_slug(name)
+            slug = slug_base
+            counter = 1
+            while Professional.query.filter_by(slug=slug).first():
+                slug = f"{slug_base}-{counter}"
+                counter += 1
+
+            professional = Professional(
+                id=generate_uuid(),
+                user_id=user.id,
+                slug=slug,
+                name=name,
+                state=user.address_state,
+                city=user.address_city,
+                district=user.address_district,
+            )
+            db.session.add(professional)
+            db.session.commit()
+
+    access_token = create_access_token(user.id, user.role)
+    refresh_token = create_refresh_token(user.id)
+
+    return jsonify({
+        'user': serialize_user(user),
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+    }), 200
 
 
 @api.route('/auth/google', methods=['POST'])

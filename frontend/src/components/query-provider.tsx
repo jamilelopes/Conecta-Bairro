@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NuqsAdapter } from 'nuqs/adapters/react';
+import { ClerkProvider } from '@clerk/react';
 import { initMocks } from '../mocks/init';
 import { AuthProvider } from '../auth/provider';
 
@@ -28,11 +29,15 @@ export function QueryProvider({ children }: QueryProviderProps) {
 
   if (!ready) return null;
 
+  const clerkKey = import.meta.env.PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
+
   return (
-    <NuqsAdapter>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>{children}</AuthProvider>
-      </QueryClientProvider>
-    </NuqsAdapter>
+    <ClerkProvider publishableKey={clerkKey}>
+      <NuqsAdapter>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>{children}</AuthProvider>
+        </QueryClientProvider>
+      </NuqsAdapter>
+    </ClerkProvider>
   );
 }

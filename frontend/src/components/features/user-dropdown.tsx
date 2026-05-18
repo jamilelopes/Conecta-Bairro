@@ -49,8 +49,8 @@ export function UserDropdown() {
 
   if (!identity.userId && !isMock) return null;
 
-  const avatarSrc =  (isMock ? MOCK_USER.avatarUrl : '') ?? claims?.picture
-  const userName = (isMock ? MOCK_USER.name : 'Usuário') ?? claims?.name
+  const avatarSrc = isMock ? MOCK_USER.avatarUrl : (claims?.picture ?? '')
+  const userName = isMock ? MOCK_USER.name : (claims?.name ?? 'Usuário')
 
   return (
     <div className="relative ml-2 group/dd">

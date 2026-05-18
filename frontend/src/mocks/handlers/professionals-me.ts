@@ -20,7 +20,6 @@ function getOrCreatePro(): ProfessionalProfile | null {
   const cached = proStore.get(user.id);
   if (cached) return cached;
 
-  const identity = getCurrentIdentity()!;
   const profile: ProfessionalProfile = {
     id: user.id,
     userId: user.id,
